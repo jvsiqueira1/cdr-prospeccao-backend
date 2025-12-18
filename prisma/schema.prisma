@@ -1,0 +1,240 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum Cadencia {
+    Semanal
+    Quinzenal
+    Mensal
+}
+
+enum Status {
+    Atrasado
+    FalarHoje
+    EmDia
+    Convertido
+}
+
+enum Temperatura {
+    Frio
+    Morno
+    Quente
+}
+
+enum Prioridade {
+    Urgente
+    Alerta
+    Atencao
+    Normal
+}
+
+enum Origem {
+    Instagram
+    Indicacao
+    Anuncio
+    Evento
+    WhatsApp
+    Organico
+    LinkedIn
+    Site
+    Outro
+}
+
+enum TipoContato {
+    Ligacao
+    WhatsApp
+    Email
+    Reuniao
+    Visita
+    Outro
+}
+
+model User {
+    id            String           @id @default(cuid())
+    email         String           @unique
+    name          String?
+    emailVerified Boolean          @default(false)
+    image         String?
+    createdAt     DateTime         @default(now())
+    updatedAt     DateTime         @updatedAt
+    leads         Lead[]
+    gamificacao   Gamificacao?
+    metricas      MetricasDiarias[]
+    sessions      Session[]
+    accounts      Account[]
+    verifications Verification[]
+}
+
+model Account {
+    id                String  @id @default(cuid())
+    userId            String
+    accountId         String
+    providerId        String
+    accessToken       String?
+    refreshToken      String?
+    idToken           String?
+    expiresAt         DateTime?
+    password          String?
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+    user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([providerId, accountId])
+    @@index([userId])
+}
+
+model Session {
+    id        String   @id @default(cuid())
+    userId    String
+    expiresAt DateTime
+    token     String   @unique
+    ipAddress String?
+    userAgent String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+    @@index([token])
+}
+
+model Verification {
+    id         String   @id @default(cuid())
+    identifier String
+    value      String
+    expiresAt  DateTime
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+    userId     String?
+    user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+}
+
+model Lead {
+    id             String             @id @default(cuid())
+    userId         String
+    user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+    nome           String
+    cidade         String
+    origem         Origem
+    telefone       String
+    codigo         String
+    cadencia       Cadencia
+    ultimoContato  DateTime?
+    proximoContato DateTime?
+    status         Status             @default(EmDia)
+    temperatura    Temperatura        @default(Frio)
+    observacao     String             @default("")
+    prioridade     Prioridade         @default(Normal)
+    score          Int                @default(0)
+    dataEntrada    DateTime           @default(now())
+    dataConversao  DateTime?
+    pontos         Int                @default(0)
+    nivel          String             @default("Prospectador Iniciante")
+    conquistas     String[]
+    historico      HistoricoContato[]
+    briefings      Briefing[]
+    createdAt      DateTime           @default(now())
+    updatedAt      DateTime           @updatedAt
+
+    @@index([status])
+    @@index([temperatura])
+    @@index([prioridade])
+    @@index([userId])
+}
+
+model HistoricoContato {
+    id           String      @id @default(cuid())
+    leadId       String
+    lead         Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+    data         DateTime    @default(now())
+    tipo         TipoContato
+    temperatura  Temperatura
+    status       Status
+    resumo       String
+    proximoPasso String
+    responsavel  String
+    createdAt    DateTime    @default(now())
+
+    @@index([leadId])
+    @@index([data])
+}
+
+model Briefing {
+    id                    String      @id @default(cuid())
+    leadId                String
+    lead                  Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+    data                  DateTime    @default(now())
+    tipoContato           TipoContato
+    objetivo              String
+    conversa              String
+    resultado             String
+    interesseDemonstrado  String
+    objecoes              String
+    proximoPasso          String
+    proximoFollowUp       DateTime?
+    temperaturaAtualizada Temperatura
+    createdAt             DateTime    @default(now())
+
+    @@index([leadId])
+    @@index([data])
+}
+
+model Gamificacao {
+    id              String         @id @default(cuid())
+    userId          String         @unique
+    user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+    pontosHoje      Int            @default(0)
+    pontosSemana    Int            @default(0)
+    pontosMes       Int            @default(0)
+    nivel           String         @default("Prospectador Iniciante")
+    conquistas      String[]
+    progressoDiario Int            @default(0)
+    missoesDiarias  MissaoDiaria[]
+    createdAt       DateTime       @default(now())
+    updatedAt       DateTime       @updatedAt
+
+    @@index([userId])
+}
+
+model MissaoDiaria {
+    id            String      @id @default(cuid())
+    gamificacaoId String
+    gamificacao   Gamificacao @relation(fields: [gamificacaoId], references: [id], onDelete: Cascade)
+    descricao     String
+    meta          Int
+    progresso     Int         @default(0)
+    concluida     Boolean     @default(false)
+    pontos        Int
+    createdAt     DateTime    @default(now())
+    updatedAt     DateTime    @updatedAt
+
+    @@index([gamificacaoId])
+}
+
+model MetricasDiarias {
+    id                      String   @id @default(cuid())
+    userId                  String
+    user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    data                    DateTime  @default(now())
+    contatosFeitos          Int       @default(0)
+    atrasosResolvidos       Int       @default(0)
+    novosLeads              Int       @default(0)
+    leadsQuentesTrabalhados Int       @default(0)
+    taxaRitmo               Float     @default(0)
+    createdAt               DateTime  @default(now())
+    updatedAt               DateTime  @updatedAt
+
+    @@unique([userId, data])
+    @@index([userId])
+    @@index([data])
+}
