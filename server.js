@@ -28,6 +28,8 @@ app.use(express.json());
 app.all("/api/auth/*", async (req, res) => {
   try {
     // Constrói a URL completa para o Better Auth
+    // Em produção (Render), o req.get("host") já vem sem porta automaticamente
+    // Em desenvolvimento, usa localhost:PORT como fallback
     const protocol = req.protocol || (req.secure ? "https" : "http");
     const host = req.get("host") || `localhost:${PORT}`;
     const fullUrl = `${protocol}://${host}${req.originalUrl || req.url}`;

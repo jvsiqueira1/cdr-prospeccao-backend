@@ -3,7 +3,7 @@ services:
     name: crm-backend
     env: node
     plan: free
-    buildCommand: npm install && npm run prisma:generate && npm run prisma:deploy
+    buildCommand: npm install --legacy-peer-deps && npm run prisma:generate && npm run prisma:deploy
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -12,5 +12,9 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
-      - key: PORT
-        value: 3000
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: BETTER_AUTH_URL
+        sync: false
+      - key: BETTER_AUTH_BASE_URL
+        sync: false

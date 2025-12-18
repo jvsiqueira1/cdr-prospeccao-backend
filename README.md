@@ -56,22 +56,27 @@ npm start
 
 ## 📦 Deploy na Render
 
-O projeto inclui um arquivo `render.yaml` para deploy automático. Configure:
+O projeto inclui um arquivo `render.yaml` na raiz para deploy automático. O Render detecta automaticamente este arquivo quando você conecta o repositório.
 
-1. **Conecte seu repositório** na Render
-2. **Variáveis de ambiente** (via Render Dashboard):
-   - `DATABASE_URL`: URL do banco Neon
-   - `PORT`: 3333 (ou deixe vazio)
-   - `NODE_ENV`: production
-   - `FRONTEND_URL`: URL do seu frontend (ex: `https://seu-frontend.vercel.app`)
-   - `BETTER_AUTH_SECRET`: Chave secreta forte (gere uma nova para produção!)
-   - `BETTER_AUTH_URL`: URL do backend (ex: `https://seu-backend.onrender.com`)
-   - `BETTER_AUTH_BASE_URL`: Mesma que `BETTER_AUTH_URL`
+### Configuração Automática via render.yaml
 
-3. **Build Command**: `npm install && npm run prisma:generate && npm run prisma:deploy`
-4. **Start Command**: `npm start`
+O arquivo `render.yaml` já está configurado com:
+- Build command: `npm install --legacy-peer-deps && npm run prisma:generate && npm run prisma:deploy`
+- Start command: `npm start`
+- Variáveis de ambiente básicas
 
-Ou use o `render.yaml` que já está configurado.
+**⚠️ IMPORTANTE**: Você precisa configurar manualmente as seguintes variáveis de ambiente no Dashboard do Render:
+
+1. **Conecte seu repositório GitHub** na Render
+2. **Configure as variáveis de ambiente** no Dashboard do Render (Settings → Environment):
+   - `DATABASE_URL`: URL completa do seu banco PostgreSQL (ex: Neon, Supabase)
+   - `NODE_ENV`: `production` (já está no render.yaml, mas verifique)
+   - `FRONTEND_URL`: URL do seu frontend **sem barra final** (ex: `https://seu-frontend.vercel.app`)
+   - `BETTER_AUTH_SECRET`: Chave secreta forte (gere uma nova para produção! Use: `openssl rand -base64 32`)
+   - `BETTER_AUTH_URL`: URL do backend **sem porta e sem barra final** (ex: `https://crm-backend.onrender.com`)
+   - `BETTER_AUTH_BASE_URL`: Mesma que `BETTER_AUTH_URL` (ex: `https://crm-backend.onrender.com`)
+
+> **Nota**: O Render define automaticamente a variável `PORT`, então **não configure PORT manualmente**. O servidor usa `process.env.PORT || 3333`, funcionando tanto em produção (Render) quanto em desenvolvimento (local).
 
 ## 📚 Endpoints da API
 
