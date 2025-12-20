@@ -63,8 +63,7 @@ router.put('/', async (req, res, next) => {
     } else {
       metricas = await prisma.metricasDiarias.update({
         where: { 
-          userId: req.userId,
-          data: hoje
+          id: metricas.id
         },
         data: req.body
       });

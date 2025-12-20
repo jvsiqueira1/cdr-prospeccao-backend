@@ -3,13 +3,15 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./lib/prisma.js";
 
 // Configurar origens confiáveis
-const trustedOrigins = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+const trustedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(",").map((url) => url.trim())
   : ["http://localhost:5173"];
 
 // Determinar se está em produção (HTTPS)
-const isProduction = process.env.NODE_ENV === "production" || 
-                     (process.env.BETTER_AUTH_BASE_URL && process.env.BETTER_AUTH_BASE_URL.startsWith("https"));
+const isProduction =
+  process.env.NODE_ENV === "production" ||
+  (process.env.BETTER_AUTH_BASE_URL &&
+    process.env.BETTER_AUTH_BASE_URL.startsWith("https"));
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -33,4 +35,3 @@ export const auth = betterAuth({
 });
 
 export default auth;
-
