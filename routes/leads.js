@@ -95,6 +95,34 @@ const normalizarStatusParaBackend = (status) => {
   return status === 'Falar Hoje' ? 'FalarHoje' : status;
 };
 
+/**
+ * Normaliza origem do frontend para o formato do backend
+ * @param {string} origem
+ * @returns {string}
+ */
+const normalizarOrigemParaBackend = (origem) => {
+  const mapeamento = {
+    'Anúncio': 'Anuncio',
+    'Indicação': 'Indicacao',
+    'Orgânico': 'Organico'
+  };
+  return mapeamento[origem] || origem;
+};
+
+/**
+ * Normaliza origem do backend para o formato do frontend
+ * @param {string} origem
+ * @returns {string}
+ */
+const normalizarOrigemParaFrontend = (origem) => {
+  const mapeamento = {
+    'Anuncio': 'Anúncio',
+    'Indicacao': 'Indicação',
+    'Organico': 'Orgânico'
+  };
+  return mapeamento[origem] || origem;
+};
+
 // GET /api/leads - Listar todos os leads
 router.get('/', async (req, res, next) => {
   try {
@@ -117,6 +145,7 @@ router.get('/', async (req, res, next) => {
     const leadsFormatados = leads.map(lead => ({
       ...lead,
       status: normalizarStatusParaFrontend(lead.status),
+      origem: normalizarOrigemParaFrontend(lead.origem),
       ultimoContato: lead.ultimoContato ? new Date(lead.ultimoContato) : null,
       proximoContato: lead.proximoContato ? new Date(lead.proximoContato) : null,
       dataEntrada: new Date(lead.dataEntrada),
@@ -159,6 +188,7 @@ router.get('/:id', async (req, res, next) => {
     res.json({
       ...lead,
       status: normalizarStatusParaFrontend(lead.status),
+      origem: normalizarOrigemParaFrontend(lead.origem),
       ultimoContato: lead.ultimoContato ? new Date(lead.ultimoContato) : null,
       proximoContato: lead.proximoContato ? new Date(lead.proximoContato) : null,
       dataEntrada: new Date(lead.dataEntrada),
@@ -182,6 +212,11 @@ router.post('/', async (req, res, next) => {
     // Normalizar status para backend
     if (leadData.status) {
       leadData.status = normalizarStatusParaBackend(leadData.status);
+    }
+
+    // Normalizar origem para backend
+    if (leadData.origem) {
+      leadData.origem = normalizarOrigemParaBackend(leadData.origem);
     }
 
     const ultimoContato = leadData.ultimoContato ? new Date(leadData.ultimoContato) : null;
@@ -226,6 +261,7 @@ router.post('/', async (req, res, next) => {
     res.status(201).json({
       ...leadAtualizado,
       status: normalizarStatusParaFrontend(leadAtualizado.status),
+      origem: normalizarOrigemParaFrontend(leadAtualizado.origem),
       ultimoContato: leadAtualizado.ultimoContato ? new Date(leadAtualizado.ultimoContato) : null,
       proximoContato: leadAtualizado.proximoContato ? new Date(leadAtualizado.proximoContato) : null,
       dataEntrada: new Date(leadAtualizado.dataEntrada),
@@ -245,6 +281,11 @@ router.put('/:id', async (req, res, next) => {
     // Normalizar status para backend
     if (updates.status) {
       updates.status = normalizarStatusParaBackend(updates.status);
+    }
+
+    // Normalizar origem para backend
+    if (updates.origem) {
+      updates.origem = normalizarOrigemParaBackend(updates.origem);
     }
 
     const leadAtual = await prisma.lead.findFirst({
@@ -321,6 +362,7 @@ router.put('/:id', async (req, res, next) => {
     res.json({
       ...leadComScore,
       status: normalizarStatusParaFrontend(leadComScore.status),
+      origem: normalizarOrigemParaFrontend(leadComScore.origem),
       ultimoContato: leadComScore.ultimoContato ? new Date(leadComScore.ultimoContato) : null,
       proximoContato: leadComScore.proximoContato ? new Date(leadComScore.proximoContato) : null,
       dataEntrada: new Date(leadComScore.dataEntrada),
@@ -421,6 +463,7 @@ router.post('/:id/contato', async (req, res, next) => {
     res.json({
       ...leadAtualizado,
       status: normalizarStatusParaFrontend(leadAtualizado.status),
+      origem: normalizarOrigemParaFrontend(leadAtualizado.origem),
       ultimoContato: leadAtualizado.ultimoContato ? new Date(leadAtualizado.ultimoContato) : null,
       proximoContato: leadAtualizado.proximoContato ? new Date(leadAtualizado.proximoContato) : null,
       dataEntrada: new Date(leadAtualizado.dataEntrada),
