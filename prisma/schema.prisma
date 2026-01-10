@@ -57,12 +57,22 @@ enum TipoContato {
     Outro
 }
 
+enum Role {
+    SELLER
+    LEADER
+    ADMIN
+}
+
 model User {
     id            String           @id @default(cuid())
     email         String           @unique
     name          String?
     emailVerified Boolean          @default(false)
     image         String?
+    role          Role             @default(SELLER)
+    managerId     String?
+    manager       User?            @relation("UserManager", fields: [managerId], references: [id])
+    subordinates  User[]           @relation("UserManager")
     createdAt     DateTime         @default(now())
     updatedAt     DateTime         @updatedAt
     leads         Lead[]
@@ -71,6 +81,8 @@ model User {
     sessions      Session[]
     accounts      Account[]
     verifications Verification[]
+
+    @@index([managerId])
 }
 
 model Account {
@@ -137,8 +149,11 @@ model Lead {
     prioridade     Prioridade         @default(Normal)
     score          Int                @default(0)
     dataEntrada    DateTime           @default(now())
-    dataConversao  DateTime?
-    pontos         Int                @default(0)
+    dataConversao       DateTime?
+    estimatedValueCents Int?
+    statedValueCents    Int?
+    currency            String             @default("BRL")
+    pontos              Int                @default(0)
     nivel          String             @default("Prospectador Iniciante")
     conquistas     String[]
     historico      HistoricoContato[]
@@ -199,6 +214,7 @@ model Gamificacao {
     nivel           String         @default("Prospectador Iniciante")
     conquistas      String[]
     progressoDiario Int            @default(0)
+    ultimaAtividade DateTime?
     missoesDiarias  MissaoDiaria[]
     createdAt       DateTime       @default(now())
     updatedAt       DateTime       @updatedAt

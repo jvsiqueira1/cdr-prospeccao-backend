@@ -7,6 +7,20 @@ const router = express.Router();
 // Todas as rotas requerem autenticação
 router.use(requireAuth);
 
+// Constantes de configuração
+const PENALIDADE_INATIVIDADE = 5; // Pontos perdidos por dia de inatividade
+
+// Field whitelist for PUT /api/gamificacao
+const GAMIFICACAO_ALLOWED_FIELDS = [
+  'pontosHoje', 'pontosSemana', 'pontosMes', 'conquistas', 'progressoDiario'
+];
+
+const sanitizeFields = (body, allowed) => {
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => allowed.includes(key))
+  );
+};
+
 const calcularNivel = (pontos) => {
   if (pontos >= 600) return 'Closer';
   if (pontos >= 301) return 'Cadência Master';
@@ -41,6 +55,59 @@ const gerarMissoesDiarias = (gamificacaoId) => [
     pontos: 10 
   },
 ];
+
+// Função para aplicar penalidade por inatividade
+const aplicarPenalidadeInatividade = async (gamificacao) => {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const ultimaAtividade = gamificacao.ultimaAtividade
+    ? new Date(gamificacao.ultimaAtividade)
+    : null;
+
+  const ultimaAtividadeDate = ultimaAtividade
+    ? (() => {
+        const date = new Date(ultimaAtividade);
+        date.setHours(0, 0, 0, 0);
+        return date;
+      })()
+    : null;
+
+  const ultimaAtividadeHoje = ultimaAtividadeDate
+    ? ultimaAtividadeDate.getTime() === hoje.getTime()
+    : false;
+
+  // Verificar se está inativo: sem pontos hoje E última atividade não é hoje
+  // E ultimaAtividade não foi atualizada hoje (para evitar penalidades duplicadas)
+  const estaInativo = gamificacao.pontosHoje === 0 && !ultimaAtividadeHoje;
+
+  if (estaInativo) {
+    // Calcular novos valores de pontos (não podem ficar negativos)
+    const novosPontosHoje = Math.max(0, gamificacao.pontosHoje - PENALIDADE_INATIVIDADE);
+    const novosPontosSemana = Math.max(0, gamificacao.pontosSemana - PENALIDADE_INATIVIDADE);
+    const novosPontosMes = Math.max(0, gamificacao.pontosMes - PENALIDADE_INATIVIDADE);
+
+    // Atualizar gamificação com penalidade e marcar ultimaAtividade para hoje
+    // (para evitar penalidades duplicadas)
+    const gamificacaoAtualizada = await prisma.gamificacao.update({
+      where: { id: gamificacao.id },
+      data: {
+        pontosHoje: novosPontosHoje,
+        pontosSemana: novosPontosSemana,
+        pontosMes: novosPontosMes,
+        ultimaAtividade: new Date(), // Marcar como verificado hoje
+        nivel: calcularNivel(novosPontosMes)
+      },
+      include: {
+        missoesDiarias: true
+      }
+    });
+
+    return gamificacaoAtualizada;
+  }
+
+  return gamificacao;
+};
 
 // GET /api/gamificacao - Buscar ou criar gamificação
 router.get('/', async (req, res, next) => {
@@ -79,6 +146,9 @@ router.get('/', async (req, res, next) => {
       });
     }
 
+    // Aplicar penalidade por inatividade se necessário
+    gamificacao = await aplicarPenalidadeInatividade(gamificacao);
+
     res.json({
       ...gamificacao,
       nivel: calcularNivel(gamificacao.pontosMes)
@@ -109,7 +179,7 @@ router.put('/', async (req, res, next) => {
       });
     }
 
-    const updates = req.body;
+    const updates = sanitizeFields(req.body, GAMIFICACAO_ALLOWED_FIELDS);
     if (updates.pontosMes !== undefined) {
       updates.nivel = calcularNivel(updates.pontosMes);
     }
@@ -136,41 +206,46 @@ router.post('/pontos', async (req, res, next) => {
   try {
     const { pontos } = req.body;
 
-    let gamificacao = await prisma.gamificacao.findUnique({
-      where: { userId: req.userId }
-    });
-
-    if (!gamificacao) {
-      gamificacao = await prisma.gamificacao.create({
-        data: {
-          userId: req.userId,
-          pontosHoje: 0,
-          pontosSemana: 0,
-          pontosMes: 0,
-          nivel: 'Prospectador Iniciante',
-          conquistas: [],
-          progressoDiario: 0
-        }
-      });
+    // Validate pontos: integer, >0, <=50
+    if (typeof pontos !== 'number' || !Number.isInteger(pontos) || pontos <= 0 || pontos > 50) {
+      return res.status(400).json({ error: 'pontos must be an integer between 1 and 50' });
     }
 
-    const gamificacaoAtualizada = await prisma.gamificacao.update({
+    // Upsert with increment
+    const gamificacaoAtualizada = await prisma.gamificacao.upsert({
       where: { userId: req.userId },
-      data: {
-        pontosHoje: gamificacao.pontosHoje + pontos,
-        pontosSemana: gamificacao.pontosSemana + pontos,
-        pontosMes: gamificacao.pontosMes + pontos,
-        nivel: calcularNivel(gamificacao.pontosMes + pontos)
+      create: {
+        userId: req.userId,
+        pontosHoje: pontos,
+        pontosSemana: pontos,
+        pontosMes: pontos,
+        nivel: calcularNivel(pontos),
+        conquistas: [],
+        progressoDiario: 0,
+        ultimaAtividade: new Date()
+      },
+      update: {
+        pontosHoje: { increment: pontos },
+        pontosSemana: { increment: pontos },
+        pontosMes: { increment: pontos },
+        ultimaAtividade: new Date()
       },
       include: {
         missoesDiarias: true
       }
     });
 
-    res.json({
-      ...gamificacaoAtualizada,
-      nivel: calcularNivel(gamificacaoAtualizada.pontosMes)
-    });
+    // Recalculate nivel after increment
+    const nivel = calcularNivel(gamificacaoAtualizada.pontosMes);
+    if (nivel !== gamificacaoAtualizada.nivel) {
+      await prisma.gamificacao.update({
+        where: { userId: req.userId },
+        data: { nivel }
+      });
+      gamificacaoAtualizada.nivel = nivel;
+    }
+
+    res.json(gamificacaoAtualizada);
   } catch (error) {
     next(error);
   }
@@ -215,7 +290,8 @@ router.put('/missoes/:id', async (req, res, next) => {
       data: {
         pontosHoje: missao.gamificacao.pontosHoje + pontosBonus + pontosExtras,
         pontosSemana: missao.gamificacao.pontosSemana + pontosBonus + pontosExtras,
-        pontosMes: missao.gamificacao.pontosMes + pontosBonus + pontosExtras
+        pontosMes: missao.gamificacao.pontosMes + pontosBonus + pontosExtras,
+        ultimaAtividade: new Date()
       },
       include: {
         missoesDiarias: true

@@ -8,6 +8,9 @@ import leadsRoutes from "./routes/leads.js";
 import gamificacaoRoutes from "./routes/gamificacao.js";
 import metricasRoutes from "./routes/metricas.js";
 import briefingsRoutes from "./routes/briefings.js";
+import leaderRoutes from "./routes/leader.js";
+import meRoutes from "./routes/me.js";
+import adminRoutes from "./routes/admin.js";
 
 dotenv.config();
 
@@ -19,7 +22,7 @@ const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
   : ['http://localhost:5173', 'http://localhost:8080'];
 
-// Middleware CORS
+// Middleware CORS com configurações melhoradas para Safari iOS
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -31,17 +34,62 @@ app.use(
       }
     },
     credentials: true,
+    // Headers expostos para o frontend poder acessar
+    exposedHeaders: ['Set-Cookie'],
+    // Métodos permitidos
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // Headers permitidos
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
+    // Cache de preflight (1 hora)
+    maxAge: 3600,
   })
 );
+
+// Middleware para garantir headers CORS em todas as respostas (especialmente para Safari)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Adiciona headers CORS se a origem for permitida
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Expose-Headers', 'Set-Cookie');
+  }
+  
+  // Tratamento explícito de preflight OPTIONS
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, X-Requested-With');
+    res.setHeader('Access-Control-Max-Age', '3600');
+    return res.status(204).end();
+  }
+  
+  next();
+});
+
 app.use(cookieParser());
 app.use(express.json());
 
 // Better Auth handler
 app.all("/api/auth/*", async (req, res) => {
   try {
-    // Detectar protocolo correto em produção (via proxy reverso do Render)
-    const protocol = req.get("x-forwarded-proto") || req.protocol || (req.secure ? "https" : "http");
-    const host = req.get("host") || `localhost:${PORT}`;
+    // Detectar protocolo correto em produção (via proxy reverso do Render/Vercel)
+    // Prioridade: x-forwarded-proto > x-forwarded-ssl > req.secure > req.protocol
+    const forwardedProto = req.get("x-forwarded-proto");
+    const forwardedSsl = req.get("x-forwarded-ssl");
+    let protocol = "http";
+    
+    if (forwardedProto) {
+      protocol = forwardedProto.split(",")[0].trim(); // Pega o primeiro se houver múltiplos
+    } else if (forwardedSsl === "on") {
+      protocol = "https";
+    } else if (req.secure) {
+      protocol = "https";
+    } else {
+      protocol = req.protocol || (req.secure ? "https" : "http");
+    }
+    
+    const host = req.get("host") || req.get("x-forwarded-host") || `localhost:${PORT}`;
     const fullUrl = `${protocol}://${host}${req.originalUrl || req.url}`;
 
     // Modifica o req para ter a URL completa
@@ -101,12 +149,19 @@ app.all("/api/auth/*", async (req, res) => {
       res.setHeader(key, value);
     });
 
-    // Garantir que headers CORS estão presentes na resposta
-    if (!res.getHeader("Access-Control-Allow-Credentials")) {
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-    }
-    if (req.headers.origin && allowedOrigins.includes(req.headers.origin)) {
-      res.setHeader("Access-Control-Allow-Origin", req.headers.origin);
+    // Garantir que headers CORS estão presentes na resposta (importante para Safari)
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      if (!res.getHeader("Access-Control-Allow-Origin")) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+      }
+      if (!res.getHeader("Access-Control-Allow-Credentials")) {
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      }
+      // Expor Set-Cookie header para que o frontend possa verificar se cookies foram definidos
+      if (!res.getHeader("Access-Control-Expose-Headers")) {
+        res.setHeader("Access-Control-Expose-Headers", "Set-Cookie");
+      }
     }
 
     // Log de debug da resposta
@@ -135,6 +190,9 @@ app.use("/api/leads", leadsRoutes);
 app.use("/api/gamificacao", gamificacaoRoutes);
 app.use("/api/metricas", metricasRoutes);
 app.use("/api/briefings", briefingsRoutes);
+app.use("/api/leader", leaderRoutes);
+app.use("/api/me", meRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

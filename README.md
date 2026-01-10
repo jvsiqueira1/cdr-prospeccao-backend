@@ -44,6 +44,18 @@ npm run prisma:migrate
 npm run prisma:deploy
 ```
 
+### Prisma Migration Commands
+
+| Command | When to use |
+|---------|-------------|
+| `npx prisma migrate dev --name <name>` | Development: creates and applies a new migration |
+| `npx prisma migrate deploy` | Production: applies pending migrations |
+| `npx prisma migrate reset` | Development only: drops DB, re-applies all migrations |
+| `npx prisma db push` | Prototyping: syncs schema without creating migration files |
+| `npx prisma generate` | Regenerates Prisma Client after schema changes |
+
+> **Note**: Always commit migration files to version control. They ensure consistent database state across environments.
+
 ### 4. Executar servidor
 
 ```bash

@@ -1,6 +1,8 @@
 import express from 'express';
 import prisma from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { normalizeTipoContato } from '../lib/enumMaps.js';
+import { validate, createBriefingSchema } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -8,28 +10,13 @@ const router = express.Router();
 router.use(requireAuth);
 
 // POST /api/briefings - Criar briefing
-router.post('/', async (req, res, next) => {
+router.post('/', validate(createBriefingSchema), async (req, res, next) => {
   try {
     const briefingData = req.body;
 
-    const briefing = await prisma.briefing.create({
-      data: {
-        leadId: briefingData.leadId,
-        tipoContato: briefingData.tipoContato,
-        objetivo: briefingData.objetivo || '',
-        conversa: briefingData.conversa || '',
-        resultado: briefingData.resultado || '',
-        interesseDemonstrado: briefingData.interesseDemonstrado || '',
-        objecoes: briefingData.objecoes || '',
-        proximoPasso: briefingData.proximoPasso || '',
-        proximoFollowUp: briefingData.proximoFollowUp ? new Date(briefingData.proximoFollowUp) : null,
-        temperaturaAtualizada: briefingData.temperaturaAtualizada
-      }
-    });
-
-    // Verificar se o lead pertence ao usuário
+    // Verificar se o lead pertence ao usuário ANTES de criar o briefing
     const lead = await prisma.lead.findFirst({
-      where: { 
+      where: {
         id: briefingData.leadId,
         userId: req.userId
       }
@@ -39,33 +26,46 @@ router.post('/', async (req, res, next) => {
       return res.status(404).json({ error: 'Lead not found' });
     }
 
-    if (lead) {
-      // Criar histórico
-      await prisma.historicoContato.create({
+    // Criar briefing, histórico e atualizar lead em uma única transação
+    const [briefing] = await prisma.$transaction([
+      prisma.briefing.create({
+        data: {
+          leadId: briefingData.leadId,
+          tipoContato: normalizeTipoContato.toBackend(briefingData.tipoContato),
+          objetivo: briefingData.objetivo || '',
+          conversa: briefingData.conversa || '',
+          resultado: briefingData.resultado || '',
+          interesseDemonstrado: briefingData.interesseDemonstrado || '',
+          objecoes: briefingData.objecoes || '',
+          proximoPasso: briefingData.proximoPasso || '',
+          proximoFollowUp: briefingData.proximoFollowUp ? new Date(briefingData.proximoFollowUp) : null,
+          temperaturaAtualizada: briefingData.temperaturaAtualizada
+        }
+      }),
+      prisma.historicoContato.create({
         data: {
           leadId: lead.id,
           data: new Date(),
-          tipo: briefingData.tipoContato,
+          tipo: normalizeTipoContato.toBackend(briefingData.tipoContato),
           temperatura: briefingData.temperaturaAtualizada,
           status: lead.status,
           resumo: briefingData.conversa,
           proximoPasso: briefingData.proximoPasso,
           responsavel: 'Usuário'
         }
-      });
-
-      // Atualizar lead
-      await prisma.lead.update({
+      }),
+      prisma.lead.update({
         where: { id: lead.id },
         data: {
           temperatura: briefingData.temperaturaAtualizada,
           ultimoContato: new Date()
         }
-      });
-    }
+      })
+    ]);
 
     res.status(201).json({
       ...briefing,
+      tipoContato: normalizeTipoContato.toFrontend(briefing.tipoContato),
       data: new Date(briefing.data),
       proximoFollowUp: briefing.proximoFollowUp ? new Date(briefing.proximoFollowUp) : null
     });
@@ -96,6 +96,7 @@ router.get('/lead/:leadId', async (req, res, next) => {
 
     res.json(briefings.map(b => ({
       ...b,
+      tipoContato: normalizeTipoContato.toFrontend(b.tipoContato),
       data: new Date(b.data),
       proximoFollowUp: b.proximoFollowUp ? new Date(b.proximoFollowUp) : null
     })));

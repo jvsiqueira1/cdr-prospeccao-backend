@@ -2,11 +2,27 @@ import express from 'express';
 import { addDays, isToday, isBefore, startOfDay, differenceInDays } from 'date-fns';
 import prisma from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { normalizeOrigem, normalizeStatus, normalizePrioridade, normalizeTipoContato } from '../lib/enumMaps.js';
+import { validate, createLeadSchema, updateLeadSchema } from '../middleware/validation.js';
 
 const router = express.Router();
 
 // Todas as rotas requerem autenticação
 router.use(requireAuth);
+
+// Field whitelist for PUT /api/leads/:id
+const LEAD_ALLOWED_FIELDS = [
+  'nome', 'cidade', 'origem', 'telefone', 'codigo', 'cadencia',
+  'ultimoContato', 'proximoContato', 'status', 'temperatura',
+  'observacao', 'dataEntrada', 'dataConversao',
+  'estimatedValueCents', 'statedValueCents', 'currency'
+];
+
+const sanitizeFields = (body, allowed) => {
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => allowed.includes(key))
+  );
+};
 
 /**
  * Helper functions
@@ -77,52 +93,6 @@ const calcularScore = (lead) => {
   return score;
 };
 
-/**
- * Normaliza status do backend para o formato do frontend
- * @param {string} status
- * @returns {string}
- */
-const normalizarStatusParaFrontend = (status) => {
-  return status === 'FalarHoje' ? 'Falar Hoje' : status;
-};
-
-/**
- * Normaliza status do frontend para o formato do backend
- * @param {string} status
- * @returns {string}
- */
-const normalizarStatusParaBackend = (status) => {
-  return status === 'Falar Hoje' ? 'FalarHoje' : status;
-};
-
-/**
- * Normaliza origem do frontend para o formato do backend
- * @param {string} origem
- * @returns {string}
- */
-const normalizarOrigemParaBackend = (origem) => {
-  const mapeamento = {
-    'Anúncio': 'Anuncio',
-    'Indicação': 'Indicacao',
-    'Orgânico': 'Organico'
-  };
-  return mapeamento[origem] || origem;
-};
-
-/**
- * Normaliza origem do backend para o formato do frontend
- * @param {string} origem
- * @returns {string}
- */
-const normalizarOrigemParaFrontend = (origem) => {
-  const mapeamento = {
-    'Anuncio': 'Anúncio',
-    'Indicacao': 'Indicação',
-    'Organico': 'Orgânico'
-  };
-  return mapeamento[origem] || origem;
-};
-
 // GET /api/leads - Listar todos os leads
 router.get('/', async (req, res, next) => {
   try {
@@ -144,8 +114,9 @@ router.get('/', async (req, res, next) => {
     // Converter para o formato esperado pelo frontend
     const leadsFormatados = leads.map(lead => ({
       ...lead,
-      status: normalizarStatusParaFrontend(lead.status),
-      origem: normalizarOrigemParaFrontend(lead.origem),
+      status: normalizeStatus.toFrontend(lead.status),
+      origem: normalizeOrigem.toFrontend(lead.origem),
+      prioridade: normalizePrioridade.toFrontend(lead.prioridade),
       ultimoContato: lead.ultimoContato ? new Date(lead.ultimoContato) : null,
       proximoContato: lead.proximoContato ? new Date(lead.proximoContato) : null,
       dataEntrada: new Date(lead.dataEntrada),
@@ -153,7 +124,14 @@ router.get('/', async (req, res, next) => {
       historico: lead.historico.map(h => ({
         ...h,
         data: new Date(h.data),
-        status: normalizarStatusParaFrontend(h.status)
+        status: normalizeStatus.toFrontend(h.status),
+        tipo: normalizeTipoContato.toFrontend(h.tipo)
+      })),
+      briefings: lead.briefings.map(b => ({
+        ...b,
+        tipoContato: normalizeTipoContato.toFrontend(b.tipoContato),
+        data: new Date(b.data),
+        proximoFollowUp: b.proximoFollowUp ? new Date(b.proximoFollowUp) : null
       }))
     }));
 
@@ -187,8 +165,9 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       ...lead,
-      status: normalizarStatusParaFrontend(lead.status),
-      origem: normalizarOrigemParaFrontend(lead.origem),
+      status: normalizeStatus.toFrontend(lead.status),
+      origem: normalizeOrigem.toFrontend(lead.origem),
+      prioridade: normalizePrioridade.toFrontend(lead.prioridade),
       ultimoContato: lead.ultimoContato ? new Date(lead.ultimoContato) : null,
       proximoContato: lead.proximoContato ? new Date(lead.proximoContato) : null,
       dataEntrada: new Date(lead.dataEntrada),
@@ -196,7 +175,14 @@ router.get('/:id', async (req, res, next) => {
       historico: lead.historico.map(h => ({
         ...h,
         data: new Date(h.data),
-        status: normalizarStatusParaFrontend(h.status)
+        status: normalizeStatus.toFrontend(h.status),
+        tipo: normalizeTipoContato.toFrontend(h.tipo)
+      })),
+      briefings: lead.briefings.map(b => ({
+        ...b,
+        tipoContato: normalizeTipoContato.toFrontend(b.tipoContato),
+        data: new Date(b.data),
+        proximoFollowUp: b.proximoFollowUp ? new Date(b.proximoFollowUp) : null
       }))
     });
   } catch (error) {
@@ -205,18 +191,18 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/leads - Criar novo lead
-router.post('/', async (req, res, next) => {
+router.post('/', validate(createLeadSchema), async (req, res, next) => {
   try {
     const leadData = req.body;
     
     // Normalizar status para backend
     if (leadData.status) {
-      leadData.status = normalizarStatusParaBackend(leadData.status);
+      leadData.status = normalizeStatus.toBackend(leadData.status);
     }
 
     // Normalizar origem para backend
     if (leadData.origem) {
-      leadData.origem = normalizarOrigemParaBackend(leadData.origem);
+      leadData.origem = normalizeOrigem.toBackend(leadData.origem);
     }
 
     const ultimoContato = leadData.ultimoContato ? new Date(leadData.ultimoContato) : null;
@@ -240,6 +226,9 @@ router.post('/', async (req, res, next) => {
         observacao: leadData.observacao || '',
         prioridade: prioridade,
         score: 0,
+        estimatedValueCents: leadData.estimatedValueCents ?? null,
+        statedValueCents: leadData.statedValueCents ?? null,
+        currency: leadData.currency || 'BRL',
         dataEntrada: leadData.dataEntrada ? new Date(leadData.dataEntrada) : new Date(),
         pontos: 0,
         nivel: 'Prospectador Iniciante',
@@ -260,8 +249,9 @@ router.post('/', async (req, res, next) => {
 
     res.status(201).json({
       ...leadAtualizado,
-      status: normalizarStatusParaFrontend(leadAtualizado.status),
-      origem: normalizarOrigemParaFrontend(leadAtualizado.origem),
+      status: normalizeStatus.toFrontend(leadAtualizado.status),
+      origem: normalizeOrigem.toFrontend(leadAtualizado.origem),
+      prioridade: normalizePrioridade.toFrontend(leadAtualizado.prioridade),
       ultimoContato: leadAtualizado.ultimoContato ? new Date(leadAtualizado.ultimoContato) : null,
       proximoContato: leadAtualizado.proximoContato ? new Date(leadAtualizado.proximoContato) : null,
       dataEntrada: new Date(leadAtualizado.dataEntrada),
@@ -274,18 +264,18 @@ router.post('/', async (req, res, next) => {
 });
 
 // PUT /api/leads/:id - Atualizar lead
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', validate(updateLeadSchema), async (req, res, next) => {
   try {
-    const updates = req.body;
-    
+    const updates = sanitizeFields(req.body, LEAD_ALLOWED_FIELDS);
+
     // Normalizar status para backend
     if (updates.status) {
-      updates.status = normalizarStatusParaBackend(updates.status);
+      updates.status = normalizeStatus.toBackend(updates.status);
     }
 
     // Normalizar origem para backend
     if (updates.origem) {
-      updates.origem = normalizarOrigemParaBackend(updates.origem);
+      updates.origem = normalizeOrigem.toBackend(updates.origem);
     }
 
     const leadAtual = await prisma.lead.findFirst({
@@ -361,8 +351,9 @@ router.put('/:id', async (req, res, next) => {
 
     res.json({
       ...leadComScore,
-      status: normalizarStatusParaFrontend(leadComScore.status),
-      origem: normalizarOrigemParaFrontend(leadComScore.origem),
+      status: normalizeStatus.toFrontend(leadComScore.status),
+      origem: normalizeOrigem.toFrontend(leadComScore.origem),
+      prioridade: normalizePrioridade.toFrontend(leadComScore.prioridade),
       ultimoContato: leadComScore.ultimoContato ? new Date(leadComScore.ultimoContato) : null,
       proximoContato: leadComScore.proximoContato ? new Date(leadComScore.proximoContato) : null,
       dataEntrada: new Date(leadComScore.dataEntrada),
@@ -370,7 +361,14 @@ router.put('/:id', async (req, res, next) => {
       historico: leadComScore.historico.map(h => ({
         ...h,
         data: new Date(h.data),
-        status: normalizarStatusParaFrontend(h.status)
+        status: normalizeStatus.toFrontend(h.status),
+        tipo: normalizeTipoContato.toFrontend(h.tipo)
+      })),
+      briefings: leadComScore.briefings.map(b => ({
+        ...b,
+        tipoContato: normalizeTipoContato.toFrontend(b.tipoContato),
+        data: new Date(b.data),
+        proximoFollowUp: b.proximoFollowUp ? new Date(b.proximoFollowUp) : null
       }))
     });
   } catch (error) {
@@ -428,7 +426,7 @@ router.post('/:id/contato', async (req, res, next) => {
       data: {
         leadId: lead.id,
         data: hoje,
-        tipo: briefing.tipoContato || 'Ligacao',
+        tipo: normalizeTipoContato.toBackend(briefing.tipoContato || 'Ligacao'),
         temperatura: lead.temperatura,
         status: lead.status,
         resumo: briefing.conversa || 'Contato registrado',
@@ -462,8 +460,9 @@ router.post('/:id/contato', async (req, res, next) => {
 
     res.json({
       ...leadAtualizado,
-      status: normalizarStatusParaFrontend(leadAtualizado.status),
-      origem: normalizarOrigemParaFrontend(leadAtualizado.origem),
+      status: normalizeStatus.toFrontend(leadAtualizado.status),
+      origem: normalizeOrigem.toFrontend(leadAtualizado.origem),
+      prioridade: normalizePrioridade.toFrontend(leadAtualizado.prioridade),
       ultimoContato: leadAtualizado.ultimoContato ? new Date(leadAtualizado.ultimoContato) : null,
       proximoContato: leadAtualizado.proximoContato ? new Date(leadAtualizado.proximoContato) : null,
       dataEntrada: new Date(leadAtualizado.dataEntrada),
@@ -471,7 +470,14 @@ router.post('/:id/contato', async (req, res, next) => {
       historico: leadAtualizado.historico.map(h => ({
         ...h,
         data: new Date(h.data),
-        status: normalizarStatusParaFrontend(h.status)
+        status: normalizeStatus.toFrontend(h.status),
+        tipo: normalizeTipoContato.toFrontend(h.tipo)
+      })),
+      briefings: leadAtualizado.briefings.map(b => ({
+        ...b,
+        tipoContato: normalizeTipoContato.toFrontend(b.tipoContato),
+        data: new Date(b.data),
+        proximoFollowUp: b.proximoFollowUp ? new Date(b.proximoFollowUp) : null
       }))
     });
   } catch (error) {
