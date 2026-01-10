@@ -3,7 +3,7 @@ services:
     name: crm-backend
     env: node
     plan: free
-    buildCommand: npm install --legacy-peer-deps && npm run prisma:deploy && npm run prisma:generate
+    buildCommand: npm ci --legacy-peer-deps && npm run prisma:deploy && npm run prisma:generate
     startCommand: npm start
     envVars:
       - key: NODE_ENV
