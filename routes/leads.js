@@ -214,10 +214,10 @@ router.post('/', validate(createLeadSchema), async (req, res, next) => {
       data: {
         userId: req.userId,
         nome: leadData.nome,
-        cidade: leadData.cidade,
+        cidade: leadData.cidade || '',
         origem: leadData.origem,
-        telefone: leadData.telefone,
-        codigo: leadData.codigo,
+        telefone: leadData.telefone || '',
+        codigo: leadData.codigo || '',
         cadencia: leadData.cadencia,
         ultimoContato: ultimoContato,
         proximoContato: proximoContato,

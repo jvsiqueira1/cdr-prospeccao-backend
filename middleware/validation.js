@@ -47,10 +47,10 @@ const dateSchema = z.string().refine((val) => !isNaN(Date.parse(val)), {
 export const createLeadSchema = z
   .object({
     nome: z.string().min(1, "Nome is required"),
-    cidade: z.string().min(1, "Cidade is required"),
+    cidade: z.string().optional(),
     origem: origemSchema,
-    telefone: z.string().min(1, "Telefone is required"),
-    codigo: z.string().min(1, "Codigo is required"),
+    telefone: z.string().optional(),
+    codigo: z.string().optional(),
     cadencia: cadenciaSchema,
     ultimoContato: z.union([dateSchema, z.null()]).optional(),
     temperatura: temperaturaSchema.optional(),
