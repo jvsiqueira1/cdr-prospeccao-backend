@@ -27,8 +27,8 @@ router.post('/', validate(createBriefingSchema), async (req, res, next) => {
     }
 
     // Criar briefing, histórico e atualizar lead em uma única transação
-    const [briefing] = await prisma.$transaction([
-      prisma.briefing.create({
+    const briefing = await prisma.$transaction(async (tx) => {
+      const newBriefing = await tx.briefing.create({
         data: {
           leadId: briefingData.leadId,
           tipoContato: normalizeTipoContato.toBackend(briefingData.tipoContato),
@@ -41,8 +41,9 @@ router.post('/', validate(createBriefingSchema), async (req, res, next) => {
           proximoFollowUp: briefingData.proximoFollowUp ? new Date(briefingData.proximoFollowUp) : null,
           temperaturaAtualizada: briefingData.temperaturaAtualizada
         }
-      }),
-      prisma.historicoContato.create({
+      });
+
+      await tx.historicoContato.create({
         data: {
           leadId: lead.id,
           data: new Date(),
@@ -53,15 +54,18 @@ router.post('/', validate(createBriefingSchema), async (req, res, next) => {
           proximoPasso: briefingData.proximoPasso,
           responsavel: 'Usuário'
         }
-      }),
-      prisma.lead.update({
+      });
+
+      await tx.lead.update({
         where: { id: lead.id },
         data: {
           temperatura: briefingData.temperaturaAtualizada,
           ultimoContato: new Date()
         }
-      })
-    ]);
+      });
+
+      return newBriefing;
+    });
 
     res.status(201).json({
       ...briefing,
